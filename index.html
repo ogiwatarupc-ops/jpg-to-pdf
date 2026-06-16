@@ -3,103 +3,137 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>画像PDF変換ツール</title>
+    <title>画像PDF変換・共有ツール</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
 
-    <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+    <div class="bg-white p-6 sm:p-8 rounded-xl shadow-md w-full max-w-md">
         <h1 class="text-xl font-bold mb-6 text-center text-gray-800">画像からPDFを作成</h1>
         
-        <form id="pdfForm" class="space-y-4">
+        <form id="pdfForm" class="space-y-5">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">ファイル名</label>
-                <input type="text" id="filename" placeholder="example" required
-                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label class="block text-sm font-medium text-gray-700 mb-1">ファイル名（PDFの名前）</label>
+                <input type="text" id="filename" placeholder="例: 提出書類" required
+                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-base">
             </div>
 
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">画像を選択 (複数可)</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">画像を選択 (複数一括選択可)</label>
                 <input type="file" id="imageInput" accept="image/*" multiple required
                        class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
             </div>
 
-            <button type="submit" 
-                    class="w-full bg-blue-600 text-white py-2 px-4 rounded-md font-medium hover:bg-blue-700 transition duration-150">
-                PDFに変換してダウンロード
+            <div id="status" class="hidden text-sm text-center text-blue-600 font-medium animate-pulse">
+                画像を軽量化してPDFを作成中...
+            </div>
+
+            <button type="submit" id="submitBtn"
+                    class="w-full bg-blue-600 text-white py-3 px-4 rounded-md font-medium hover:bg-blue-700 transition duration-150 cursor-pointer text-base">
+                PDFを作成して共有・保存
             </button>
         </form>
     </div>
 
-<script>
-    // 縮小処理の関数
-    async function resizeImage(file, maxWidth = 1200) {
-        return new Promise((resolve) => {
-            const img = new Image();
-            img.src = URL.createObjectURL(file);
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                // アスペクト比を維持して計算
-                const scale = maxWidth / img.width;
-                canvas.width = maxWidth;
-                canvas.height = img.height * scale;
-                
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                
-                // JPEGとして再圧縮（0.7 = 70%の品質）
-                canvas.toBlob((blob) => {
-                    resolve(blob);
-                }, 'image/jpeg', 0.7);
-            };
-        });
-    }
-
-    document.getElementById('pdfForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        const filename = document.getElementById('filename').value || 'document';
-        const files = document.getElementById('imageInput').files;
-        const { PDFDocument } = PDFLib;
-        const pdfDoc = await PDFDocument.create();
-
-        for (let i = 0; i < files.length; i++) {
-            // ここでリサイズ処理を呼ぶ
-            const resizedBlob = await resizeImage(files[i]);
-            const arrayBuffer = await resizedBlob.arrayBuffer();
-            
-            const image = await pdfDoc.embedJpg(arrayBuffer);
-            const page = pdfDoc.addPage([image.width, image.height]);
-            page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+    <script>
+        // 画像を軽量化（縮小・再圧縮）する関数
+        async function resizeImage(file, maxWidth = 1200) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.src = URL.createObjectURL(file);
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    
+                    // 元画像が指定サイズより小さければリサイズしない
+                    if (img.width <= maxWidth) {
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                    } else {
+                        const scale = maxWidth / img.width;
+                        canvas.width = maxWidth;
+                        canvas.height = img.height * scale;
+                    }
+                    
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    
+                    // JPEG形式に変換して画質を70%に落とす（これで劇的に軽くなります）
+                    canvas.toBlob((blob) => {
+                        resolve(blob);
+                    }, 'image/jpeg', 0.7);
+                };
+            });
         }
 
-// PDFのバイナリデータを生成
-const pdfBytes = await pdfDoc.save();
-const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        // フォーム送信時のメイン処理
+        document.getElementById('pdfForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
 
-// ファイルオブジェクトを作成
-const pdfFile = new File([blob], `${filename}.pdf`, { type: 'application/pdf' });
+            const filename = document.getElementById('filename').value || 'document';
+            const files = document.getElementById('imageInput').files;
+            const statusDiv = document.getElementById('status');
+            const submitBtn = document.getElementById('submitBtn');
 
-// スマホの共有機能（Web Share API）が使えるかチェック
-if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-    try {
-        // スマホ標準の共有メニューを起動
-        await navigator.share({
-            files: [pdfFile],
-            title: `${filename}.pdf`,
-            text: '作成したPDFです。'
+            if (files.length === 0) return;
+
+            // ボタンを無効化して処理中表示にする
+            submitBtn.disabled = true;
+            submitBtn.classList.add('bg-gray-400');
+            statusDiv.classList.remove('hidden');
+
+            try {
+                // 1. 新しいPDFドキュメントを作成
+                const { PDFDocument } = PDFLib;
+                const pdfDoc = await PDFDocument.create();
+
+                // 2. 選択された画像を1枚ずつ軽量化してPDFに追加
+                for (let i = 0; i < files.length; i++) {
+                    const resizedBlob = await resizeImage(files[i]);
+                    const arrayBuffer = await resizedBlob.arrayBuffer();
+                    
+                    // 圧縮後のデータはすべてJPEGとして埋め込む
+                    const image = await pdfDoc.embedJpg(arrayBuffer);
+                    
+                    // 画像の縦横サイズぴったりにページを追加
+                    const page = pdfDoc.addPage([image.width, image.height]);
+                    page.drawImage(image, {
+                        x: 0,
+                        y: 0,
+                        width: image.width,
+                        height: image.height,
+                    });
+                }
+
+                // 3. PDFバイナリデータを生成
+                const pdfBytes = await pdfDoc.save();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const pdfFile = new File([blob], `${filename}.pdf`, { type: 'application/pdf' });
+
+                // 4. スマホの標準共有機能（Web Share API）を呼び出す
+                if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+                    await navigator.share({
+                        files: [pdfFile],
+                        title: `${filename}.pdf`,
+                        text: '作成したPDFファイルです。'
+                    });
+                } else {
+                    // 共有機能が使えないPCブラウザなどの場合は自動ダウンロード
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = `${filename}.pdf`;
+                    link.click();
+                }
+            } catch (error) {
+                console.error('エラーが発生しました:', error);
+                alert('PDFの作成または共有に失敗しました。');
+            } finally {
+                // 状態を元に戻す
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('bg-gray-400');
+                statusDiv.classList.add('hidden');
+            }
         });
-    } catch (error) {
-        console.log('共有がキャンセルされました:', error);
-    }
-} else {
-    // PCや古いスマホなど、共有機能が使えない場合は自動でダウンロード
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `${filename}.pdf`;
-    link.click();
-}
-</script>
+    </script>
 </body>
 </html>
