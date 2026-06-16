@@ -74,14 +74,32 @@
             page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
         }
 
-        const pdfBytes = await pdfDoc.save();
-        // (以下ダウンロード処理は同じ)
-        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `${filename}.pdf`;
-        link.click();
-    });
+// PDFのバイナリデータを生成
+const pdfBytes = await pdfDoc.save();
+const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+
+// ファイルオブジェクトを作成
+const pdfFile = new File([blob], `${filename}.pdf`, { type: 'application/pdf' });
+
+// スマホの共有機能（Web Share API）が使えるかチェック
+if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+    try {
+        // スマホ標準の共有メニューを起動
+        await navigator.share({
+            files: [pdfFile],
+            title: `${filename}.pdf`,
+            text: '作成したPDFです。'
+        });
+    } catch (error) {
+        console.log('共有がキャンセルされました:', error);
+    }
+} else {
+    // PCや古いスマホなど、共有機能が使えない場合は自動でダウンロード
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${filename}.pdf`;
+    link.click();
+}
 </script>
 </body>
 </html>
