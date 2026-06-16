@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>画像PDF変換ツール</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+    <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+        <h1 class="text-xl font-bold mb-6 text-center text-gray-800">画像からPDFを作成</h1>
+        
+        <form id="pdfForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">ファイル名</label>
+                <input type="text" id="filename" placeholder="example" required
+                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">画像を選択 (複数可)</label>
+                <input type="file" id="imageInput" accept="image/*" multiple required
+                       class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+            </div>
+
+            <button type="submit" 
+                    class="w-full bg-blue-600 text-white py-2 px-4 rounded-md font-medium hover:bg-blue-700 transition duration-150">
+                PDFに変換してダウンロード
+            </button>
+        </form>
+    </div>
+
+<script>
+    // 縮小処理の関数
+    async function resizeImage(file, maxWidth = 1200) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                // アスペクト比を維持して計算
+                const scale = maxWidth / img.width;
+                canvas.width = maxWidth;
+                canvas.height = img.height * scale;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                // JPEGとして再圧縮（0.7 = 70%の品質）
+                canvas.toBlob((blob) => {
+                    resolve(blob);
+                }, 'image/jpeg', 0.7);
+            };
+        });
+    }
+
+    document.getElementById('pdfForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const filename = document.getElementById('filename').value || 'document';
+        const files = document.getElementById('imageInput').files;
+        const { PDFDocument } = PDFLib;
+        const pdfDoc = await PDFDocument.create();
+
+        for (let i = 0; i < files.length; i++) {
+            // ここでリサイズ処理を呼ぶ
+            const resizedBlob = await resizeImage(files[i]);
+            const arrayBuffer = await resizedBlob.arrayBuffer();
+            
+            const image = await pdfDoc.embedJpg(arrayBuffer);
+            const page = pdfDoc.addPage([image.width, image.height]);
+            page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+        }
+
+        const pdfBytes = await pdfDoc.save();
+        // (以下ダウンロード処理は同じ)
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${filename}.pdf`;
+        link.click();
+    });
+</script>
+</body>
+</html>
